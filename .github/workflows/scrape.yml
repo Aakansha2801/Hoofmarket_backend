@@ -1,9 +1,7 @@
-
 name: HoofMarketIQ Scrape
 
 on:
   schedule:
-    # Runs daily at 7:00 AM Central Time (12:00 UTC)
     - cron: '10 8 * * *'
   workflow_dispatch:
     inputs:
@@ -20,7 +18,7 @@ jobs:
     env:
       SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-      TESTING_MODE:         "false"   # production cadence in CI
+      TESTING_MODE:         "false"
 
     steps:
       - name: Checkout
@@ -36,7 +34,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Install Playwright Chromium
-        run: playwright install chromium --with-deps
+        run: playwright install chromium
 
       - name: Run scrape + analytics
         run: python3 main.py --once
@@ -48,6 +46,3 @@ jobs:
           name: hoofmarket-log-${{ github.run_id }}
           path: hoofmarket.log
           retention-days: 7
-
-
-
