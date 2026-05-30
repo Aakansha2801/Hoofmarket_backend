@@ -26,11 +26,13 @@ jobs:
 
       - name: Install dependencies
         run: |
+          cd /home/ntf-301/Desktop/hoofmarket_io
           source venv/bin/activate
           pip install -r requirements.txt
 
       - name: Run scrape + analytics
         run: |
+          cd /home/ntf-301/Desktop/hoofmarket_io
           source venv/bin/activate
           python3 main.py --once
 
