@@ -2,10 +2,10 @@
 # HoofMarketIQ — config/base.py
 # Global settings shared across ALL scrapers/sites
 # ============================================================
-
+import os
 # ── Supabase ──────────────────────────────────────────────────
-SUPABASE_URL         = "https://imzqatfkwyeqinvnshem.supabase.co"
-SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImltenFhdGZrd3llcWludm5zaGVtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTk0NTgwOSwiZXhwIjoyMDk1NTIxODA5fQ.9Qc71dyX1sNQisGPSGyG00U4u99R2cOwlGoqg1EvsU0"
+SUPABASE_URL         = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 # ── Run mode ──────────────────────────────────────────────────
 # True  → runs every 30 min (testing)
