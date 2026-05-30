@@ -1,0 +1,53 @@
+
+name: HoofMarketIQ Scrape
+
+on:
+  schedule:
+    # Runs daily at 7:00 AM Central Time (12:00 UTC)
+    - cron: '10 8 * * *'
+  workflow_dispatch:
+    inputs:
+      site:
+        description: 'Which scraper to run (all | wildlifebuyer | bucktrader)'
+        required: false
+        default: 'all'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      TESTING_MODE:         "false"   # production cadence in CI
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+
+      - name: Run scrape + analytics
+        run: python3 main.py --once
+
+      - name: Upload log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hoofmarket-log-${{ github.run_id }}
+          path: hoofmarket.log
+          retention-days: 7
+
+
+

@@ -8,9 +8,10 @@ SUPABASE_URL         = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 # ── Run mode ──────────────────────────────────────────────────
-# True  → runs every 30 min (testing)
-# False → runs every 24 hrs  (production)
-TESTING_MODE = True
+# True  → scheduler every 30 min (testing/local)
+# False → scheduler every 24 h  (production / CI)
+# CI sets TESTING_MODE=false via workflow env
+TESTING_MODE = os.getenv("TESTING_MODE", "true").lower() != "false"
 
 # ── Scraper behavior ──────────────────────────────────────────
 RATE_LIMIT_MIN        = 5    # seconds between requests (min)
