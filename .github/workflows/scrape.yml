@@ -24,20 +24,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
       - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Install Playwright Chromium
-        run: playwright install chromium --with-deps
+        run: |
+          source venv/bin/activate
+          pip install -r requirements.txt
 
       - name: Run scrape + analytics
-        run: python3 main.py --once
+        run: |
+          source venv/bin/activate
+          python3 main.py --once
 
       - name: Upload log on failure
         if: failure()
