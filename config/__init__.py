@@ -7,11 +7,12 @@ from config.base    import *      # Supabase, rate limits, TX regions
 from config.species import *      # Species tiers & keywords
 
 # Registry of all site configs — add new sites here ONLY
-from config.sites import wildlifebuyer, bucktrader
+from config.sites import wildlifebuyer, bucktrader, onlinehuntingauctions
 
 SITE_REGISTRY = {
     "wildlifebuyer": wildlifebuyer,
     "bucktrader":    bucktrader,
+    "onlinehuntingauctions": onlinehuntingauctions,
     # "exoticauctions": exoticauctions,   ← uncomment when ready
 }
 

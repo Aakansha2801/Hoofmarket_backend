@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+import json
+from html import escape
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlparse
+
+from db.supabase_client import get_client
+
+HOST = "127.0.0.1"
+PORT = 8000
+
+
+def render_page(title: str, body: str) -> bytes:
+    html = f"""<!doctype html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\">
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+  <title>{escape(title)}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 24px; background: #f7f9fb; color: #202124; }}
+    h1, h2 {{ margin-bottom: 0.5rem; }}
+    table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; }}
+    th, td {{ padding: 10px; border: 1px solid #dfe1e5; text-align: left; }}
+    th {{ background: #f1f3f4; }}
+    tr:nth-child(even) {{ background: #ffffff; }}
+    tr:nth-child(odd) {{ background: #f8fafc; }}
+    a {{ color: #1a73e8; text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    .small {{ font-size: 0.9rem; color: #5f6368; }}
+    .container {{ max-width: 1400px; margin: 0 auto; }}
+    .toolbar {{ margin-bottom: 1rem; }}
+    .badge {{ display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; background: #e8f0fe; color: #1967d2; font-size: 0.85rem; }}
+    pre {{ white-space: pre-wrap; word-break: break-all; background: #ffffff; padding: 12px; border: 1px solid #dfe1e5; border-radius: 6px; }}
+  </style>
+</head>
+<body>
+  <div class=\"container\">
+    <h1>{escape(title)}</h1>
+    {body}
+  </div>
+</body>
+</html>"""
+    return html.encode("utf-8")
+
+
+class DashboardHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/":
+            self.show_listings(parsed)
+        elif parsed.path == "/listing":
+            self.show_listing_detail(parsed)
+        else:
+            self.send_error(404, "Not Found")
+
+    def show_listings(self, parsed):
+        query = parse_qs(parsed.query)
+        site_filter = query.get("site", [""])[0]
+
+        client = get_client()
+        table = client.table("listings")
+        if site_filter:
+            response = table.select("*").eq("source_site", site_filter).execute()
+        else:
+            response = table.select("*").execute()
+
+        listings = response.data or []
+        listings_sorted = sorted(listings, key=lambda row: row.get("scraped_at") or "", reverse=True)
+
+        filters = sorted({row.get("source_site") or "unknown" for row in listings_sorted})
+        filter_html = ""
+        if filters:
+            filter_html = "<div class=\"toolbar\"><strong>Filter by source_site:</strong> " + " ".join(
+                f'<a href=\"/?site={escape(site)}\" class=\"badge\">{escape(site)}</a>' for site in filters
+            ) + f' <a href=\"/\" class=\"badge\">all</a></div>'
+
+        body = f"""
+<div class=\"toolbar\">{filter_html}</div>
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Listing ID</th>
+      <th>Title</th>
+      <th>Source</th>
+      <th>Auction</th>
+      <th>Status</th>
+      <th>Auction date</th>
+      <th>Source URL</th>
+    </tr>
+  </thead>
+  <tbody>
+"""
+        for idx, row in enumerate(listings_sorted, start=1):
+            title = escape(str(row.get("title") or ""))
+            listing_id = escape(str(row.get("listing_id") or row.get("id") or ""))
+            source_site = escape(str(row.get("source_site") or ""))
+            auction_date = escape(str(row.get("auction_date") or ""))
+            auction_status = escape(str(row.get("auction_status") or ""))
+            source_url = escape(str(row.get("source_url") or ""))
+            auction_title = escape(str(row.get("auction_title") or ""))
+            detail_path = f"/listing?id={escape(str(row.get('id')))}"
+            body += f"""
+    <tr>
+      <td>{idx}</td>
+      <td><a href=\"{detail_path}\">{listing_id}</a></td>
+      <td>{title}</td>
+      <td>{source_site}</td>
+      <td>{auction_title}</td>
+      <td>{auction_status}</td>
+      <td>{auction_date}</td>
+      <td><a href=\"{source_url}\" target=\"_blank\">link</a></td>
+    </tr>
+"""
+        body += """
+  </tbody>
+</table>
+<p class=\"small\">Showing {len(listings_sorted)} listings.</p>
+"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(render_page("Listings dashboard", body))
+
+    def show_listing_detail(self, parsed):
+        query = parse_qs(parsed.query)
+        listing_id = query.get("id", [""])[0]
+        if not listing_id:
+            self.send_error(400, "Missing id parameter")
+            return
+
+        client = get_client()
+        response = client.table("listings").select("*").eq("id", listing_id).limit(1).execute()
+        row = (response.data or [])[:1]
+        if not row:
+            self.send_error(404, "Listing not found")
+            return
+        row = row[0]
+
+        rows = []
+        for key in sorted(row.keys()):
+            value = row[key]
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value, indent=2, ensure_ascii=False)
+                value_html = f"<pre>{escape(value)}</pre>"
+            else:
+                value_html = escape(str(value))
+            rows.append(f"<tr><th>{escape(key)}</th><td>{value_html}</td></tr>")
+
+        body = f"""
+<p><a href=\"/\">← Back to listings</a></p>
+<table>
+  <tbody>
+    {''.join(rows)}
+  </tbody>
+</table>
+"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(render_page(f"Listing detail: {escape(row.get('listing_id') or '')}", body))
+
+    def log_message(self, format, *args):
+        return
+
+
+def run():
+    server = HTTPServer((HOST, PORT), DashboardHandler)
+    print(f"Dashboard running at http://{HOST}:{PORT}/")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping dashboard")
+        server.server_close()
+
+
+if __name__ == "__main__":
+    run()

@@ -263,6 +263,10 @@ def _compute_tier_stats(client, listings: list[dict]):
         logger.info(f"  ✅ tier_stats: {len(rows)} rows")
     except Exception as e:
         logger.error(f"  tier_stats failed: {e}")
+        # If schema mismatch (missing age_class or species_filter), log remediation steps
+        if "age_class" in str(e) or "species_filter" in str(e):
+            logger.warning("   → Run db/migration_analytics_v1_to_v2_upgrade.sql to update schema")
+            logger.warning("   → Or run db/migration_analytics_v2.sql for fresh deployment")
 
 
 def _tier_row(sf, tier, sex, age_class, listings) -> dict:

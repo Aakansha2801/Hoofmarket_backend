@@ -3,6 +3,11 @@
 # Global settings shared across ALL scrapers/sites
 # ============================================================
 import os
+
+from dotenv import load_dotenv
+# Load local environment variables from .env when running locally.
+load_dotenv()
+
 # ── Supabase ──────────────────────────────────────────────────
 SUPABASE_URL         = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")

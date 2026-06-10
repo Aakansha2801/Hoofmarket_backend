@@ -7,7 +7,7 @@ import logging
 from scrapers.browser import make_httpx_client, close_browser
 from scrapers.wildlifebuyer import WildlifeBuyerScraper
 from scrapers.bucktrader import BuckTraderScraper
-
+from scrapers.onlinehuntingauctions import OnlineHuntingAuctionsScraper
 from parser.field_extractor import extract_fields
 from parser.tier_calculator import apply_tier
 from db.upsert import upsert_batch
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 SCRAPERS = [
     WildlifeBuyerScraper(),
     BuckTraderScraper(),
+     OnlineHuntingAuctionsScraper(),
 ]
 
 BATCH_SIZE = 20
