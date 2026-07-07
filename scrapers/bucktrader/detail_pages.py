@@ -34,56 +34,75 @@ async def scrape_listing(card: dict, client: httpx.AsyncClient) -> dict | None:
 
 
 def _parse_detail(soup: BeautifulSoup) -> dict:
+    """
+    Confirmed BuckTrader detail page structure (from live page inspection):
+      Title:       h1 (page-level, not inside wrapper)
+      Description: .tagline  (the listing body text)
+      Location:    .directorist-listing-location
+      Phone:       .directorist-single-info-phone .directorist-single-info__value
+      Images:      .image-slider img  (src attribute, full URL)
+      Status:      .tagline text — "SOLD!" indicates sold
+      Price:       Not present — BuckTrader is a classifieds board (contact seller)
+    """
     data = {}
 
-    # Title
-    h = soup.select_one("h1, h2.listing-title")
-    data["title"] = h.get_text(strip=True) if h else None
+    # ── Title ─────────────────────────────────────────────────
+    h1 = soup.select_one("h1.directorist-listing-title, h1.entry-title, h1")
+    data["title"] = h1.get_text(strip=True) if h1 else None
 
-    # Price
-    price_el = soup.select_one(".listing-price, .price, [class*='price']")
-    data["price_raw"]     = price_el.get_text(strip=True) if price_el else None
-    data["price_current"] = _parse_price(data["price_raw"])
-
-    # Description
-    desc_el = soup.select_one(".listing-description, .entry-content, .listing-body, .description")
-    data["description_raw"] = desc_el.get_text(" ", strip=True) if desc_el else None
-
-    # Seller
-    seller_el = soup.select_one(".seller-name, .contact-name, .listing-seller")
-    data["seller_id"] = seller_el.get_text(strip=True) if seller_el else None
-
-    # Photos
-    imgs = soup.select(".listing-gallery img, .gallery img, .swiper-slide img, .listing-img img")
-    data["photo_urls"] = [img["src"] for img in imgs if img.get("src")]
-
-    # Location
-    loc_el = soup.select_one(".listing-location, .location-detail, .single-location")
-    data["location_raw"] = loc_el.get_text(strip=True) if loc_el else None
-
-    # Auction date / listed date
-    date_el = soup.select_one("time, .listing-date, .posted-date")
-    if date_el:
-        data["auction_date"] = date_el.get("datetime") or date_el.get_text(strip=True)
+    # ── Description (tagline = listing body) ──────────────────
+    tagline = soup.select_one(".tagline")
+    if tagline:
+        raw = tagline.get_text(" ", strip=True)
+        # "SOLD!" as sole content means listing is sold — keep it as description too
+        data["description_raw"] = raw
     else:
-        data["auction_date"] = None
+        data["description_raw"] = None
 
-    # Status — BuckTrader listings are classifieds, not auctions
-    data["auction_status"] = "active"
-    data["bid_count"]      = 0
+    # ── Auction status ────────────────────────────────────────
+    tagline_text = (data["description_raw"] or "").lower()
+    if "sold" in tagline_text:
+        data["auction_status"] = "sold"
+    else:
+        data["auction_status"] = "active"
+
+    # ── Price — not on BuckTrader (classifieds board) ─────────
+    # price_current stays None; seller is contacted by phone
+    data["price_current"]  = None
     data["easy_bid_price"] = None
-    data["quantity"]       = 1
+    data["bid_count"]      = 0
+    data["price_start"]    = None
+
+    # ── Location ──────────────────────────────────────────────
+    loc = soup.select_one(".directorist-listing-location")
+    data["location"] = loc.get_text(strip=True) if loc else None
+
+    # ── Seller contact (phone as seller_id) ───────────────────
+    phone = soup.select_one(
+        ".directorist-single-info-phone .directorist-single-info__value"
+    )
+    data["seller_id"] = phone.get_text(strip=True) if phone else None
+
+    # ── Images (.image-slider img) ────────────────────────────
+    imgs = soup.select(".image-slider img")
+    photos = []
+    for img in imgs:
+        src = (
+            img.get("src")
+            or img.get("data-src")
+            or img.get("data-lazy-src")
+            or ""
+        )
+        if src and not src.endswith(("placeholder", "blank.gif")):
+            photos.append(src if src.startswith("http") else BASE_URL + src)
+    data["photo_urls"] = photos
+
+    # ── Auction date — not present, use None ──────────────────
+    data["auction_date"] = None
+
+    # ── Quantity from title ───────────────────────────────────
+    title = data["title"] or ""
+    m = re.match(r"^(\d+)\s+[A-Za-z]", title.strip())
+    data["quantity"] = int(m.group(1)) if m and int(m.group(1)) > 0 else 1
 
     return data
-
-
-def _parse_price(text: str) -> float | None:
-    if not text:
-        return None
-    nums = re.findall(r"[\d,]+(?:\.\d+)?", text.replace(",", ""))
-    if nums:
-        try:
-            return float(nums[0])
-        except ValueError:
-            pass
-    return None

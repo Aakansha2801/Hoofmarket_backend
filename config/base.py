@@ -22,7 +22,6 @@ TESTING_MODE = os.getenv("TESTING_MODE", "true").lower() != "false"
 RATE_LIMIT_MIN        = 5    # seconds between requests (min)
 RATE_LIMIT_MAX        = 10   # seconds between requests (max)
 MAX_PAGES_PER_CATEGORY = 100 # safety cap
-HEADLESS              = True  # False = watch browser during debug
 
 # ── Texas regions (county → region) ──────────────────────────
 TEXAS_REGIONS = {

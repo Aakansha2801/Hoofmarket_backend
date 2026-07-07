@@ -7,15 +7,12 @@ logger = logging.getLogger(__name__)
 _LISTING_FIELDS = {
     "listing_id", "source_url", "source_site", "scraped_at",
     "title", "description_raw",
-    "price_current", "price_final", "price_start", "easy_bid_price", "bid_count",
-    "auction_status", "auction_date",
-    "photo_urls", "seller_id", "quantity",
-    "species", "sex", "age_class", "bred_status", "color_phase",
-    "location_raw", "location_city", "location_county",
-    "location_region", "location_state",
-    "primary_measurement_inches", "secondary_measurements",
-    "tier", "tier_confidence", "quality_score",
-    "extraction_notes", "needs_manual_review", "is_active",
+    "price_current", "price_final", "easy_bid_price", "bid_count",
+    "auction_status", "auction_date", "auction_start_date", "auction_end_date", "reserve_status",
+    "photo_urls", "quantity",
+    "species", "sex", "age_class", "bred_status",
+    "location",
+    "is_active",
 }
 
 # Fields that change over time — logged when they differ from existing row
@@ -23,7 +20,7 @@ _MUTABLE_FIELDS = {"price_current", "auction_status", "bid_count", "easy_bid_pri
 
 _SPECIES_ENUM        = {"axis", "blackbuck", "aoudad"}
 _SEX_ENUM            = {"male", "female", "unknown"}
-_AUCTION_STATUS_ENUM = {"active", "closed", "paused", "unknown"}
+_AUCTION_STATUS_ENUM = {"active", "closed", "sold", "paused", "unknown"}
 _AGE_CLASS_ENUM      = {"calf", "yearling", "mature_2_4", "prime_4_6", "mature_6plus", "unknown"}
 _BRED_STATUS_ENUM    = {"wild", "ranch_bred", "ai", "et", "proven_breeder", "unknown"}
 _TIER_ENUM           = {"management", "good", "trophy", "elite"}
@@ -37,7 +34,6 @@ def _filter_fields(listing: dict) -> dict:
     if row.get("auction_status") not in _AUCTION_STATUS_ENUM: row["auction_status"] = "unknown"
     if row.get("age_class")      not in _AGE_CLASS_ENUM:      row["age_class"]      = "unknown"
     if row.get("bred_status")    not in _BRED_STATUS_ENUM:    row["bred_status"]    = "unknown"
-    if row.get("tier")           not in _TIER_ENUM:           row["tier"]           = None
     if row.get("source_site")    not in _SOURCE_SITE_ENUM:    row["source_site"]    = None
     return row
 

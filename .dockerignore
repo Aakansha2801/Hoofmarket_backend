@@ -1,0 +1,16 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+logs/
+*.log
+.git/
+.github/
+.vscode/
+.DS_Store
+dashboard.py
+dashboard.txt
+run_bucktrader_export.py
+oha.txt

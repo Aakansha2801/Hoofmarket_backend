@@ -5,7 +5,9 @@
 
 import asyncio
 import logging
+import os
 import sys
+from pathlib import Path
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -14,12 +16,18 @@ from orchestrator import run_all_scrapers
 from analytics.engine import run_analytics
 from config.base import TESTING_MODE
 
+# ── Logging ───────────────────────────────────────────────────
+# LOG_DIR env var set in Docker to /app/logs (mounted volume)
+# Falls back to current directory for local dev
+log_dir = Path(os.getenv("LOG_DIR", "."))
+log_dir.mkdir(parents=True, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("hoofmarket.log"),
+        logging.FileHandler(log_dir / "hoofmarket.log"),
     ],
 )
 logger = logging.getLogger(__name__)

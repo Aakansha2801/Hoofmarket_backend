@@ -4,13 +4,14 @@
 
 import logging
 
-from scrapers.browser import make_httpx_client, close_browser
+from scrapers.browser import make_httpx_client
 from scrapers.wildlifebuyer import WildlifeBuyerScraper
 from scrapers.bucktrader import BuckTraderScraper
 from scrapers.onlinehuntingauctions import OnlineHuntingAuctionsScraper
 from parser.field_extractor import extract_fields
 from parser.tier_calculator import apply_tier
 from db.upsert import upsert_batch
+from db.supabase_client import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,6 @@ async def run_all_scrapers() -> int:
             logger.info(f"[{site}] saved={saved}")
             total_saved += saved
 
-    await close_browser()
     logger.info(f"✅ All scrapers done — total saved={total_saved}")
     return total_saved
 
@@ -45,6 +45,13 @@ async def run_all_scrapers() -> int:
 async def _run_one(scraper, client) -> int:
     cards = await scraper.collect_listing_urls(client)
     logger.info(f"  [{scraper.source_site}] {len(cards)} URLs collected")
+
+    # Add previously-active DB listings not seen in browse — they may have sold
+    seen_ids = {c.get("listing_id") for c in cards}
+    stale = _fetch_stale_active(scraper.source_site, seen_ids)
+    if stale:
+        logger.info(f"  [{scraper.source_site}] +{len(stale)} stale active listings to recheck")
+        cards = cards + stale
 
     batch, ok, err = [], 0, 0
 
@@ -70,3 +77,24 @@ async def _run_one(scraper, client) -> int:
     if err:
         logger.warning(f"  [{scraper.source_site}] {err} listings failed")
     return ok
+
+
+def _fetch_stale_active(source_site: str, seen_ids: set) -> list[dict]:
+    """Fetch active DB listings not present in the current browse run."""
+    try:
+        r = (
+            get_client()
+            .table("listings")
+            .select("listing_id,source_url")
+            .eq("source_site", source_site)
+            .eq("auction_status", "active")
+            .execute()
+        )
+        return [
+            {"listing_id": row["listing_id"], "url": row["source_url"]}
+            for row in r.data
+            if row["listing_id"] not in seen_ids
+        ]
+    except Exception as e:
+        logger.warning(f"  Could not fetch stale active listings: {e}")
+        return []

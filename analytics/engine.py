@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 PRIMARY_SPECIES  = ["axis", "blackbuck", "aoudad"]
 ALL_FILTERS      = PRIMARY_SPECIES + ["other", "all"]
 
-TIERS     = ["management", "good", "trophy", "elite"]
+
 SEXES     = ["male", "female", "unknown"]
 AGE_CLASSES = ["calf", "yearling", "mature_2_4", "prime_4_6", "mature_6plus"]
 
@@ -55,11 +55,11 @@ def run_analytics():
 
     logger.info(f"  Working with {len(listings)} priced listings")
 
-    _compute_market_overview(client, listings)   # Module 1
-    _compute_price_snapshots(client, listings)   # Module 2
-    _compute_tier_stats(client, listings)        # Modules 3 + 4 + 5
-    _compute_region_stats(client, listings)      # Module 6
-    _compute_species_comparison(client, listings) # Module 7
+    _compute_market_overview(client, listings)
+    _compute_price_snapshots(client, listings)
+    _compute_sex_age_stats(client, listings)
+    _compute_region_stats(client, listings)
+    _compute_species_comparison(client, listings)
 
     logger.info("✅ Analytics complete")
 
@@ -67,18 +67,10 @@ def run_analytics():
 # ── Data fetch ────────────────────────────────────────────────
 
 def _fetch_all_listings(client) -> list[dict]:
-    """
-    Fetch all listings that have a price.
-    Includes active + closed — active prices show market demand,
-    closed prices show final sale values.
-    """
     try:
         r = (
             client.table("listings")
-            .select(
-                "species,tier,sex,age_class,location_region,"
-                "price_current,auction_status,scraped_at,auction_date"
-            )
+            .select("species,sex,age_class,location,price_current,auction_status,scraped_at,auction_date")
             .not_.is_("price_current", "null")
             .execute()
         )
@@ -172,42 +164,29 @@ def _compute_price_snapshots(client, listings: list[dict]):
     for sf in ALL_FILTERS:
         subset = _filter_listings(listings, sf)
 
-        # Overall (no tier/sex/region filter)
-        rows.append(_snapshot_row(today, sf, None, None, None, subset))
+        rows.append(_snapshot_row(today, sf, None, None, subset))
 
-        # Per tier
-        for tier in TIERS:
-            t_list = [l for l in subset if l.get("tier") == tier]
-            if t_list:
-                rows.append(_snapshot_row(today, sf, tier, None, None, t_list))
-
-        # Per sex
         for sex in SEXES:
             s_list = [l for l in subset if l.get("sex") == sex]
             if s_list:
-                rows.append(_snapshot_row(today, sf, None, sex, None, s_list))
+                rows.append(_snapshot_row(today, sf, sex, None, s_list))
 
-        # Per region
-        regions = {l["location_region"] for l in subset if l.get("location_region")}
-        for region in regions:
-            r_list = [l for l in subset if l.get("location_region") == region]
-            rows.append(_snapshot_row(today, sf, None, None, region, r_list))
+        for age in AGE_CLASSES:
+            a_list = [l for l in subset if l.get("age_class") == age]
+            if a_list:
+                rows.append(_snapshot_row(today, sf, None, age, a_list))
 
-    _upsert(
-        client, "price_snapshots", rows,
-        "snapshot_date,species_filter,tier,sex,location_region"
-    )
+    _upsert(client, "price_snapshots", rows, "snapshot_date,species_filter,sex,age_class")
     logger.info(f"  ✅ price_snapshots: {len(rows)} rows")
 
 
-def _snapshot_row(snapshot_date, sf, tier, sex, region, listings) -> dict:
+def _snapshot_row(snapshot_date, sf, sex, age_class, listings) -> dict:
     prices = _prices(listings)
     row = {
         "snapshot_date":  snapshot_date,
         "species_filter": sf,
-        "tier":           tier,
         "sex":            sex,
-        "location_region": region,
+        "age_class":      age_class,
         "listing_count":  len(prices),
     }
     row.update(_agg(prices))
@@ -216,69 +195,46 @@ def _snapshot_row(snapshot_date, sf, tier, sex, region, listings) -> dict:
 
 # ── Modules 3 + 4 + 5: Tier / Sex / Age Stats ────────────────
 
-def _compute_tier_stats(client, listings: list[dict]):
+def _compute_sex_age_stats(client, listings: list[dict]):
     rows = []
 
     for sf in ALL_FILTERS:
         subset = _filter_listings(listings, sf)
 
-        # Overall
-        rows.append(_tier_row(sf, None, None, None, subset))
+        rows.append(_sex_age_row(sf, None, None, subset))
 
-        # Per tier (Module 3)
-        for tier in TIERS:
-            t_list = [l for l in subset if l.get("tier") == tier]
-            if not t_list:
-                continue
-            rows.append(_tier_row(sf, tier, None, None, t_list))
-
-            # Tier × sex (Module 4)
-            for sex in SEXES:
-                ts_list = [l for l in t_list if l.get("sex") == sex]
-                if ts_list:
-                    rows.append(_tier_row(sf, tier, sex, None, ts_list))
-
-            # Tier × age (Module 5)
-            for age in AGE_CLASSES:
-                ta_list = [l for l in t_list if l.get("age_class") == age]
-                if ta_list:
-                    rows.append(_tier_row(sf, tier, None, age, ta_list))
-
-        # Per sex only (Module 4 — sex overview)
         for sex in SEXES:
             s_list = [l for l in subset if l.get("sex") == sex]
-            if s_list:
-                rows.append(_tier_row(sf, None, sex, None, s_list))
+            if not s_list:
+                continue
+            rows.append(_sex_age_row(sf, sex, None, s_list))
+            for age in AGE_CLASSES:
+                sa_list = [l for l in s_list if l.get("age_class") == age]
+                if sa_list:
+                    rows.append(_sex_age_row(sf, sex, age, sa_list))
 
-        # Per age only (Module 5 — age overview)
         for age in AGE_CLASSES:
             a_list = [l for l in subset if l.get("age_class") == age]
             if a_list:
-                rows.append(_tier_row(sf, None, None, age, a_list))
+                rows.append(_sex_age_row(sf, None, age, a_list))
 
-    # Full replace each run
     try:
         client.table("tier_stats").delete().neq("id", 0).execute()
         client.table("tier_stats").insert(rows).execute()
         logger.info(f"  ✅ tier_stats: {len(rows)} rows")
     except Exception as e:
         logger.error(f"  tier_stats failed: {e}")
-        # If schema mismatch (missing age_class or species_filter), log remediation steps
-        if "age_class" in str(e) or "species_filter" in str(e):
-            logger.warning("   → Run db/migration_analytics_v1_to_v2_upgrade.sql to update schema")
-            logger.warning("   → Or run db/migration_analytics_v2.sql for fresh deployment")
 
 
-def _tier_row(sf, tier, sex, age_class, listings) -> dict:
+def _sex_age_row(sf, sex, age_class, listings) -> dict:
     prices = _prices(listings)
     row = {
-        "computed_at":      datetime.now(timezone.utc).isoformat(),
-        "species_filter":   sf,
-        "tier":             tier,
-        "sex":              sex,
-        "age_class":        age_class,
-        "listing_count":    len(prices),
-        "price_histogram":  _histogram(prices),
+        "computed_at":     datetime.now(timezone.utc).isoformat(),
+        "species_filter":  sf,
+        "sex":             sex,
+        "age_class":       age_class,
+        "listing_count":   len(prices),
+        "price_histogram": _histogram(prices),
     }
     row.update(_agg(prices))
     return row
@@ -287,20 +243,28 @@ def _tier_row(sf, tier, sex, age_class, listings) -> dict:
 # ── Module 6: Geographic / Heat Map ──────────────────────────
 
 def _compute_region_stats(client, listings: list[dict]):
+    """Derive region from the free-text location field (state abbreviation or name)."""
+    import re
     rows = []
 
     for sf in ALL_FILTERS:
-        subset  = _filter_listings(listings, sf)
-        regions = {l["location_region"] for l in subset if l.get("location_region")}
+        subset = _filter_listings(listings, sf)
+        # Extract state from location text e.g. "Kerrville, TX" → "TX"
+        def _state(loc):
+            if not loc:
+                return None
+            m = re.search(r'\b([A-Z]{2})\b', loc)
+            return m.group(1) if m else None
 
+        regions = {_state(l.get("location")) for l in subset} - {None}
         for region in regions:
-            r_list = [l for l in subset if l.get("location_region") == region]
+            r_list = [l for l in subset if _state(l.get("location")) == region]
             prices = _prices(r_list)
             row = {
-                "computed_at":   datetime.now(timezone.utc).isoformat(),
+                "computed_at":    datetime.now(timezone.utc).isoformat(),
                 "species_filter": sf,
-                "region":        region,
-                "listing_count": len(r_list),
+                "region":         region,
+                "listing_count":  len(r_list),
             }
             row.update(_agg(prices))
             rows.append(row)
@@ -319,18 +283,10 @@ def _compute_species_comparison(client, listings: list[dict]):
     for sf in ALL_FILTERS:
         subset = _filter_listings(listings, sf)
         prices = _prices(subset)
-
-        # Tier distribution count
-        tier_dist = {
-            tier: sum(1 for l in subset if l.get("tier") == tier)
-            for tier in TIERS
-        }
-
         row = {
-            "computed_at":      datetime.now(timezone.utc).isoformat(),
-            "species_filter":   sf,
-            "listing_count":    len(subset),
-            "tier_distribution": tier_dist,
+            "computed_at":    datetime.now(timezone.utc).isoformat(),
+            "species_filter": sf,
+            "listing_count":  len(subset),
         }
         row.update(_agg(prices))
         rows.append(row)

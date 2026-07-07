@@ -55,24 +55,35 @@ def _parse_detail(soup: BeautifulSoup, url: str) -> dict:
         data["description_raw"] = None
 
     # ── Current bid / price ───────────────────────────────────
-    # OHA hides the winning bid behind a login wall ("Sign In To View
-    # Winning Bid × 2 units").  Only record a price when there is an
-    # explicit dollar amount on the page — never parse bare integers.
-    bid_el = soup.find(class_=re.compile(r"current.?bid|high.?bid|price|amount", re.I))
-    bid_text = bid_el.get_text(strip=True) if bid_el else ""
-    # Reject if it looks like "Sign In" / login-wall copy
-    if re.search(r"sign.?in|login|view.?winning", bid_text, re.I):
-        bid_text = ""
-    data["price_current"] = _parse_price(bid_text)
+    # OHA shows prices as <span class="part"><b>Start Price:</b>20,000.00 USD</span>
+    # Winning bid is hidden behind login — fall back to Start Price when not visible
 
-    # Starting / opening bid
-    start_text = soup.find(string=re.compile(r"start|opening|minimum", re.I))
-    if start_text:
-        parent = start_text.find_parent()
-        m = re.search(r"\$[\d,]+", parent.get_text() if parent else "")
-        data["starting_bid"] = _parse_price(m.group(0) if m else "")
-    else:
-        data["starting_bid"] = None
+    # 1. Try winning/final bid first
+    price_final = _extract_price_by_labels(
+        soup,
+        [r"winning\s*bid", r"final\s*bid", r"sold\s*(?:for|at|price)", r"sale\s*price"],
+    )
+    data["price_final"] = price_final
+
+    # 2. Start price from confirmed selector: span.part containing 'Start Price:'
+    price_start = None
+    for span in soup.find_all("span", class_="part"):
+        txt = span.get_text(" ", strip=True)
+        if re.search(r"start\s*price", txt, re.I):
+            price_start = _parse_price(txt)
+            break
+    # Fallback to label-based search
+    if price_start is None:
+        price_start = _extract_price_by_labels(
+            soup,
+            [r"start(?:ing)?\s*price", r"opening\s*bid", r"minimum\s*bid", r"start\s*bid"],
+        )
+    data["price_start"]   = price_start
+    data["starting_bid"]  = price_start
+
+    # 3. price_current = winning bid if available, else start price
+    #    (Start Price is the best public signal when no bids have been placed)
+    data["price_current"] = price_final or price_start
 
     # ── Auction status ────────────────────────────────────────
     data["auction_status"] = _parse_status(soup)
@@ -88,7 +99,7 @@ def _parse_detail(soup: BeautifulSoup, url: str) -> dict:
     data["seller_id"] = org_el.get_text(strip=True) if org_el else _parse_seller_text(soup)
 
     # ── Location ──────────────────────────────────────────────
-    data["location_raw"] = _parse_location(soup, data.get("description_raw", "") or "")
+    data["location"] = _parse_location(soup, data.get("description_raw", "") or "")
 
     # ── Photos ────────────────────────────────────────────────
     data["photo_urls"] = _parse_photos(soup)
@@ -104,22 +115,30 @@ def _parse_detail(soup: BeautifulSoup, url: str) -> dict:
 # ── Field parsers ─────────────────────────────────────────────
 
 def _parse_price(text: str) -> float | None:
-    """Extract a dollar amount from text.  Requires a leading '$' so bare
-    numbers like '2 units' or lot counts never match accidentally."""
+    """Extract dollar amount. Accepts '$20,000.00' OR '20,000.00 USD'."""
     if not text:
         return None
-    # Must start with '$'; commas inside the number are allowed
+    # '$20,000.00' pattern
     m = re.search(r"\$([\d,]+(?:\.\d{1,2})?)", text)
-    if not m:
-        return None
-    try:
-        return float(m.group(1).replace(",", ""))
-    except ValueError:
-        return None
+    if m:
+        try:
+            return float(m.group(1).replace(",", ""))
+        except ValueError:
+            pass
+    # '20,000.00 USD' pattern (OHA site format)
+    m = re.search(r"([\d,]+(?:\.\d{1,2})?)\s*USD", text, re.I)
+    if m:
+        try:
+            return float(m.group(1).replace(",", ""))
+        except ValueError:
+            pass
+    return None
 
 
 def _parse_status(soup: BeautifulSoup) -> str:
     text = soup.get_text().lower()
+    if "sold" in text:
+        return "sold"
     if "bidding has concluded" in text or "auction has ended" in text or "complete" in text:
         return "closed"
     if "paused" in text:
@@ -151,6 +170,25 @@ def _parse_auction_date(soup: BeautifulSoup) -> str | None:
                 return datetime.strptime(m.group(1).strip(), fmt).date().isoformat()
             except ValueError:
                 continue
+    return None
+
+
+def _extract_price_by_labels(soup: BeautifulSoup, patterns: list[str]) -> float | None:
+    """Look for price labels and return the first matching dollar amount."""
+    for pattern in patterns:
+        label = soup.find(string=re.compile(pattern, re.I))
+        if label:
+            parent = label.find_parent()
+            text = parent.get_text(" ", strip=True) if parent else label
+            m = re.search(r"\$[\d,]+(?:\.\d{1,2})?", text)
+            if m:
+                return _parse_price(m.group(0))
+    # Fallback: scan the whole page text once for a labeled price phrase
+    page_text = soup.get_text(" ", strip=True)
+    for pattern in patterns:
+        m = re.search(fr"(?:{pattern})[:\s]*\$[\d,]+(?:\.\d{{1,2}})?", page_text, re.I)
+        if m:
+            return _parse_price(m.group(0))
     return None
 
 

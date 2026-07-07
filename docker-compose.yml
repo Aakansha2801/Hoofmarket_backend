@@ -1,0 +1,35 @@
+# ============================================================
+# HoofMarketIQ — docker-compose.yml
+#
+# Usage:
+#   docker compose up -d              → start scheduler (production)
+#   docker compose run --rm scraper python main.py --once  → single run
+#   docker compose logs -f            → follow logs
+# ============================================================
+
+services:
+  scraper:
+    image: aakansha28/hoofmarket-scraper:v2
+    container_name: hoofmarket_scraper
+    restart: unless-stopped
+
+    env_file:
+      - .env                          # SUPABASE_URL, SUPABASE_SERVICE_KEY
+
+    environment:
+      TESTING_MODE: "false"           # 24h schedule in production
+      PYTHONUNBUFFERED: "1"
+      TZ: "America/Chicago"           # Texas time for scheduler
+
+    volumes:
+      - ./logs:/app/logs              # persist logs outside container
+
+    ports:
+      - "8010:8010"
+
+    # Resource limits — scraper is I/O bound, not CPU heavy
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
