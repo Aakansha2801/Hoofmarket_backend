@@ -1,6 +1,10 @@
+
+
+
 """
 HoofMarketIQ — FastAPI REST API
-Starts scraper immediately on server boot, then repeats every 24 h.
+Starts scraper immediately on server boot, then repeats on the configured
+production interval (default: every 6 h, override via SCRAPE_INTERVAL_HOURS).
 
 Usage:
     uvicorn app:app --host 0.0.0.0 --port 8000
@@ -21,6 +25,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+
+from config.base import SCRAPE_INTERVAL_HOURS
+import os
+
+SCRAPE_INTERVAL_HOURS = int(
+    os.getenv("SCRAPE_INTERVAL_HOURS", "6")
+)
 
 # ── Logging ───────────────────────────────────────────────────
 logging.basicConfig(
@@ -52,9 +63,16 @@ def run_job():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = BackgroundScheduler(timezone="America/Chicago")
-    scheduler.add_job(run_job, IntervalTrigger(hours=24), id="scrape_job", max_instances=1)
+    scheduler.add_job(
+        run_job,
+        IntervalTrigger(hours=SCRAPE_INTERVAL_HOURS), 
+        id="scrape_job",
+        max_instances=1,
+    )
     scheduler.start()
-    logger.info("⏰ Scheduler started — every 24 h")
+    logger.info(
+        f"⏰ Scheduler started — every {SCRAPE_INTERVAL_HOURS} h"
+    )
 
     # Run immediately on boot in a thread so uvicorn doesn't block
     import threading

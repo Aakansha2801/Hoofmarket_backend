@@ -17,7 +17,16 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 # False → scheduler every 24 h  (production / CI)
 # CI sets TESTING_MODE=false via workflow env
 TESTING_MODE = os.getenv("TESTING_MODE", "true").lower() != "false"
-
+# ── Scrape interval ────────────────────────────────────────────
+# SCRAPE_INTERVAL_HOURS env var takes precedence if explicitly set
+# (e.g. Dockerfile default of 6). Otherwise fall back based on TESTING_MODE.
+if os.getenv("SCRAPE_INTERVAL_HOURS") is not None:
+    SCRAPE_INTERVAL_HOURS = float(os.getenv("SCRAPE_INTERVAL_HOURS"))
+elif TESTING_MODE:
+    SCRAPE_INTERVAL_HOURS = 0.5  # 30 min
+else:
+    SCRAPE_INTERVAL_HOURS = 6
+ 
 # ── Scraper behavior ──────────────────────────────────────────
 RATE_LIMIT_MIN        = 5    # seconds between requests (min)
 RATE_LIMIT_MAX        = 10   # seconds between requests (max)
