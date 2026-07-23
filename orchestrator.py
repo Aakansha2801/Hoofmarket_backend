@@ -196,16 +196,20 @@ async def run_all_scrapers() -> int:
 
 
 def _sync_to_bubble_safe() -> None:
-    """Push new Supabase listings to Bubble.io.
+    """Push freshly scraped listings to Bubble.io.
 
     Imports are deferred so the orchestrator module loads cleanly even
     if `bubble_sync` is misconfigured (missing token, network down, etc.).
     Failures are logged but never raised.
+
+    Note: bubble_sync.sync_to_bubble() is now async (it scrapes directly
+    instead of reading from Supabase), so we run it via asyncio.run().
     """
     try:
+        import asyncio
         import bubble_sync
         logger.info("━━━ Bubble.io sync ━━━")
-        bubble_sync.sync_to_bubble()
+        asyncio.run(bubble_sync.sync_to_bubble())
         logger.info("✅ Bubble sync done")
     except Exception as e:
         logger.warning(f"⚠️  Bubble sync failed (scrape still succeeded): {e}")
