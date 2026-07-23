@@ -3,7 +3,6 @@
 # them directly to Bubble.io.  No intermediate database layer.
 # To add a new site: instantiate its scraper class and add to SCRAPERS list.
 
-import asyncio
 import logging
 
 from scrapers.browser import make_httpx_client
@@ -41,22 +40,25 @@ async def run_all_scrapers() -> int:
     # ── Sync scraped listings to Bubble.io ───────────────────────
     # Runs after every scrape cycle. Wrapped in try/except so a Bubble
     # outage never fails the scrape run.
-    _sync_to_bubble_safe()
+    await _sync_to_bubble_safe()
 
     return total_scraped
 
 
-def _sync_to_bubble_safe() -> None:
+async def _sync_to_bubble_safe() -> None:
     """Push freshly scraped listings to Bubble.io.
 
     Imports are deferred so the orchestrator module loads cleanly even
     if `bubble_sync` is misconfigured (missing token, network down, etc.).
     Failures are logged but never raised.
+
+    Uses await because this is called from within an already-running
+    async context (run_all_scrapers), so asyncio.run() would fail.
     """
     try:
         import bubble_sync
         logger.info("━━━ Bubble.io sync ━━━")
-        asyncio.run(bubble_sync.sync_to_bubble())
+        await bubble_sync.sync_to_bubble()
         logger.info("✅ Bubble sync done")
     except Exception as e:
         logger.warning(f"⚠️  Bubble sync failed (scrape still succeeded): {e}")
