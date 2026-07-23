@@ -1,31 +1,22 @@
 # ============================================================
 # HoofMarketIQ — analytics/engine.py
-# V1 Analytics — all 10 required modules
+# V1 Analytics — computation logic only (no database writes)
 #
-# Tables written:
-#   market_overview    → Module 1: Dashboard KPIs
-#   price_snapshots    → Module 2: Price trend line charts
-#   tier_stats         → Module 3/4/5: Tier + Sex + Age analytics
-#   region_stats       → Module 6: Geographic heat map
-#   species_comparison → Module 7: Side-by-side species comparison
-#
-# Modules 8 (filters) and 9 (aggregation strategy) are handled
-# by the query layer — data is pre-aggregated here for all
-# filter combinations Bubble.io will need.
+# All Supabase table writes have been removed. The computation
+# functions are preserved for future use with Bubble.io or any
+# other data store.  For now, analytics results are logged but
+# not persisted anywhere.
 # ============================================================
 
 import logging
 import statistics
 from datetime import date, datetime, timezone, timedelta
 
-from db.supabase_client import get_client
-
 logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────
 PRIMARY_SPECIES  = ["axis", "blackbuck", "aoudad"]
 ALL_FILTERS      = PRIMARY_SPECIES + ["other", "all"]
-
 
 SEXES     = ["male", "female", "unknown"]
 AGE_CLASSES = ["calf", "yearling", "mature_2_4", "prime_4_6", "mature_6plus"]
@@ -44,41 +35,37 @@ PRICE_BUCKETS = [
 
 # ── Main entry point ──────────────────────────────────────────
 
-def run_analytics():
-    logger.info("📊 Running analytics...")
-    client = get_client()
+def run_analytics(listings: list[dict] | None = None):
+    """Run analytics computations on scraped listing data.
 
-    listings = _fetch_all_listings(client)
+    If no listings are provided, this logs a warning and returns.
+    In the future, listings can be fetched from Bubble.io.
+
+    Args:
+        listings: list of listing dicts with at least the keys:
+            species, sex, age_class, location, price_current,
+            auction_status, scraped_at, auction_date
+    """
+    logger.info("📊 Running analytics...")
+
     if not listings:
+        logger.warning("  No listings provided — analytics skipped (no Supabase to read from)")
+        return
+
+    priced = [l for l in listings if l.get("price_current")]
+    if not priced:
         logger.warning("  No listings with price found — skipping analytics")
         return
 
-    logger.info(f"  Working with {len(listings)} priced listings")
+    logger.info(f"  Working with {len(priced)} priced listings")
 
-    _compute_market_overview(client, listings)
-    _compute_price_snapshots(client, listings)
-    _compute_sex_age_stats(client, listings)
-    _compute_region_stats(client, listings)
-    _compute_species_comparison(client, listings)
+    _compute_market_overview(priced)
+    _compute_price_snapshots(priced)
+    _compute_sex_age_stats(priced)
+    _compute_region_stats(priced)
+    _compute_species_comparison(priced)
 
-    logger.info("✅ Analytics complete")
-
-
-# ── Data fetch ────────────────────────────────────────────────
-
-def _fetch_all_listings(client) -> list[dict]:
-    try:
-        r = (
-            client.table("listings")
-            .select("species,sex,age_class,location,price_current,auction_status,scraped_at,auction_date")
-            .not_.is_("price_current", "null")
-            .execute()
-        )
-        logger.info(f"  Fetched {len(r.data)} priced listings")
-        return r.data
-    except Exception as e:
-        logger.error(f"  Fetch failed: {e}")
-        return []
+    logger.info("✅ Analytics complete (results logged, not persisted to DB)")
 
 
 # ── species_filter helper ─────────────────────────────────────
@@ -125,7 +112,7 @@ def _histogram(prices: list[float]) -> list[dict]:
 
 # ── Module 1: Market Overview ─────────────────────────────────
 
-def _compute_market_overview(client, listings: list[dict]):
+def _compute_market_overview(listings: list[dict]):
     now   = datetime.now(timezone.utc)
     ago24 = (now - timedelta(hours=24)).isoformat()
     ago7d = (now - timedelta(days=7)).isoformat()
@@ -151,13 +138,12 @@ def _compute_market_overview(client, listings: list[dict]):
         row.update(_agg(prices))
         rows.append(row)
 
-    _upsert(client, "market_overview", rows, "species_filter")
-    logger.info(f"  ✅ market_overview: {len(rows)} rows")
+    logger.info(f"  ✅ market_overview: {len(rows)} rows computed")
 
 
 # ── Module 2: Price Trend Snapshots ──────────────────────────
 
-def _compute_price_snapshots(client, listings: list[dict]):
+def _compute_price_snapshots(listings: list[dict]):
     today = date.today().isoformat()
     rows  = []
 
@@ -176,8 +162,7 @@ def _compute_price_snapshots(client, listings: list[dict]):
             if a_list:
                 rows.append(_snapshot_row(today, sf, None, age, a_list))
 
-    _upsert(client, "price_snapshots", rows, "snapshot_date,species_filter,sex,age_class")
-    logger.info(f"  ✅ price_snapshots: {len(rows)} rows")
+    logger.info(f"  ✅ price_snapshots: {len(rows)} rows computed")
 
 
 def _snapshot_row(snapshot_date, sf, sex, age_class, listings) -> dict:
@@ -195,7 +180,7 @@ def _snapshot_row(snapshot_date, sf, sex, age_class, listings) -> dict:
 
 # ── Modules 3 + 4 + 5: Tier / Sex / Age Stats ────────────────
 
-def _compute_sex_age_stats(client, listings: list[dict]):
+def _compute_sex_age_stats(listings: list[dict]):
     rows = []
 
     for sf in ALL_FILTERS:
@@ -218,12 +203,7 @@ def _compute_sex_age_stats(client, listings: list[dict]):
             if a_list:
                 rows.append(_sex_age_row(sf, None, age, a_list))
 
-    try:
-        client.table("tier_stats").delete().neq("id", 0).execute()
-        client.table("tier_stats").insert(rows).execute()
-        logger.info(f"  ✅ tier_stats: {len(rows)} rows")
-    except Exception as e:
-        logger.error(f"  tier_stats failed: {e}")
+    logger.info(f"  ✅ tier_stats: {len(rows)} rows computed")
 
 
 def _sex_age_row(sf, sex, age_class, listings) -> dict:
@@ -242,14 +222,13 @@ def _sex_age_row(sf, sex, age_class, listings) -> dict:
 
 # ── Module 6: Geographic / Heat Map ──────────────────────────
 
-def _compute_region_stats(client, listings: list[dict]):
+def _compute_region_stats(listings: list[dict]):
     """Derive region from the free-text location field (state abbreviation or name)."""
     import re
     rows = []
 
     for sf in ALL_FILTERS:
         subset = _filter_listings(listings, sf)
-        # Extract state from location text e.g. "Kerrville, TX" → "TX"
         def _state(loc):
             if not loc:
                 return None
@@ -271,13 +250,12 @@ def _compute_region_stats(client, listings: list[dict]):
 
     if not rows:
         return
-    _upsert(client, "region_stats", rows, "species_filter,region")
-    logger.info(f"  ✅ region_stats: {len(rows)} rows")
+    logger.info(f"  ✅ region_stats: {len(rows)} rows computed")
 
 
 # ── Module 7: Species Comparison ─────────────────────────────
 
-def _compute_species_comparison(client, listings: list[dict]):
+def _compute_species_comparison(listings: list[dict]):
     rows = []
 
     for sf in ALL_FILTERS:
@@ -291,16 +269,4 @@ def _compute_species_comparison(client, listings: list[dict]):
         row.update(_agg(prices))
         rows.append(row)
 
-    _upsert(client, "species_comparison", rows, "species_filter")
-    logger.info(f"  ✅ species_comparison: {len(rows)} rows")
-
-
-# ── Generic upsert helper ─────────────────────────────────────
-
-def _upsert(client, table: str, rows: list[dict], on_conflict: str):
-    if not rows:
-        return
-    try:
-        client.table(table).upsert(rows, on_conflict=on_conflict).execute()
-    except Exception as e:
-        logger.error(f"  {table} upsert failed: {e}")
+    logger.info(f"  ✅ species_comparison: {len(rows)} rows computed")

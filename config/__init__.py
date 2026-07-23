@@ -3,7 +3,7 @@
 # Single import point: `from config import *`
 # ============================================================
 
-from config.base    import *      # Supabase, rate limits, TX regions
+from config.base    import *      # Rate limits, TX regions
 from config.species import *      # Species tiers & keywords
 
 # Registry of all site configs — add new sites here ONLY

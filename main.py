@@ -13,7 +13,6 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from orchestrator import run_all_scrapers
-from analytics.engine import run_analytics
 from config.base import TESTING_MODE
 
 # ── Logging ───────────────────────────────────────────────────
@@ -35,12 +34,8 @@ logger = logging.getLogger(__name__)
 
 def run_job():
     logger.info("🚀 Job started")
-    saved = asyncio.run(run_all_scrapers())
-    if saved > 0:
-        run_analytics()
-    else:
-        logger.info("⏭️  No new data — skipping analytics")
-    logger.info("🏁 Job complete")
+    scraped = asyncio.run(run_all_scrapers())
+    logger.info(f"🏁 Job complete — scraped={scraped}")
 
 
 def start_scheduler():
