@@ -2,10 +2,9 @@
 # HoofMarketIQ — analytics/engine.py
 # V1 Analytics — computation logic only (no database writes)
 #
-# All Supabase table writes have been removed. The computation
-# functions are preserved for future use with Bubble.io or any
-# other data store.  For now, analytics results are logged but
-# not persisted anywhere.
+# Analytics results are logged but not persisted to any database.
+# In the future, these computations can be wired to Bubble.io
+# or any other data store for persistence.
 # ============================================================
 
 import logging
@@ -49,7 +48,7 @@ def run_analytics(listings: list[dict] | None = None):
     logger.info("📊 Running analytics...")
 
     if not listings:
-        logger.warning("  No listings provided — analytics skipped (no Supabase to read from)")
+        logger.warning("  No listings provided — analytics skipped")
         return
 
     priced = [l for l in listings if l.get("price_current")]
