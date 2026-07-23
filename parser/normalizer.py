@@ -12,7 +12,7 @@ from config.species import SPECIAL_SPECIES_CONFIG, ALL_SPECIAL_KEYWORDS
 logger = logging.getLogger(__name__)
 
 
-# ── Unified DB schema (what goes into Supabase) ───────────────
+# ── Unified DB schema (what goes into Bubble.io) ───────────────
 # Every scraper output must map to these keys.
 SCHEMA_KEYS = [
     "source_site",       # "bucktrader" | "wildlifebuyer"

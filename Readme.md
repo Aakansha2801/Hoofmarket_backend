@@ -6,7 +6,7 @@ A scraper pipeline that collects exotic hoofstock auction and classified listing
 * BuckTrader
 * Online Hunting Auctions (OHA)
 
-The system extracts listing details, tracks status changes, and stores normalized data in Supabase.
+The system extracts listing details, tracks status changes, and syncs data directly to **Bubble.io** — no intermediate database.
 
 ---
 
@@ -29,43 +29,34 @@ class BaseScraper(ABC):
 * Scrape listing details
 * Normalize extracted data
 * Detect listing status changes
-* Save results to Supabase
+* Sync results directly to Bubble.io
 
 ---
 
-## Scraping Workflow
+## Scraping & Sync Workflow
 
 For each source:
 
 1. Collect listing URLs from browse pages
-2. Load active listings from the database
-3. Merge and deduplicate both sets
-4. Re-scrape all URLs
-5. Extract structured fields
-6. Upsert data into Supabase
-7. Track status changes
+2. Scrape each listing detail page
+3. Extract structured fields (species, sex, age class, tier)
+4. Check existing Bubble listings for deduplication
+5. Bulk insert new listings to Bubble.io
+6. PATCH changed listings in Bubble.io
 
 ```text
 Browse Listings
        ↓
-Load Active DB Listings
-       ↓
-Merge & Deduplicate
-       ↓
 Scrape Details
        ↓
-Field Extraction
+Field Extraction & Enrichment
        ↓
-Status Detection
+Dedup against Bubble (existing listing_ids)
        ↓
-Supabase Upsert
+Bulk Insert (new) / PATCH (changed)
+       ↓
+Bubble.io Database
 ```
-
-### Why Merge With Active Listings?
-
-Many auction sites remove sold or closed listings from browse pages.
-
-Re-checking active database records ensures status changes are detected and listings do not remain incorrectly marked as active.
 
 ---
 
@@ -171,26 +162,12 @@ A failed listing never stops the entire scraping run.
 
 ## Storage
 
-Listings are stored in Supabase using batch upserts.
+Listings are stored directly in **Bubble.io**.
 
-* Batch Size: 20
-* Deduplication by URL
-* Fallback deduplication by Listing ID
-* Status transition tracking
-
----
-
-## Status Tracking
-
-The system automatically detects transitions such as:
-
-```text
-Active → Sold
-Active → Closed
-Active → Ended
-```
-
-This ensures database records remain accurate even after listings disappear from source websites.
+* Bulk Insert via NDJSON API
+* Per-row PATCH for changed listings
+* Deduplication by listing_id against existing Bubble records
+* Change detection across watched fields
 
 ---
 
@@ -200,11 +177,10 @@ This ensures database records remain accurate even after listings disappear from
 * AsyncIO
 * HTTPX
 * BeautifulSoup
-* Supabase
-* PostgreSQL
+* Bubble.io API
 
 ---
 
 ## Goal
 
-Provide a reliable and maintainable pipeline for collecting, normalizing, and tracking exotic hoofstock listings across multiple auction and classified platforms.
+Provide a reliable and maintainable pipeline for collecting, normalizing, and tracking exotic hoofstock listings across multiple auction and classified platforms, with all data stored directly in Bubble.io.

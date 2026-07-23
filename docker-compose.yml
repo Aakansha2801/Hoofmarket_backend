@@ -14,7 +14,7 @@ services:
     restart: unless-stopped
 
     env_file:
-      - .env                          # SUPABASE_URL, SUPABASE_SERVICE_KEY
+      - .env                          # API_TOKEN for Bubble.io
 
     environment:
       TESTING_MODE: "false"           # 24h schedule in production
