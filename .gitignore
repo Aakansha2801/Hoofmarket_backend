@@ -17,3 +17,12 @@ __pycache__/
 
 # OS files
 .DS_Store
+
+venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+.coverage
+dist/
+build/
