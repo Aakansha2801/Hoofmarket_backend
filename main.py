@@ -16,10 +16,22 @@ from orchestrator import run_all_scrapers
 from config.base import TESTING_MODE
 
 # ── Logging ───────────────────────────────────────────────────
-# LOG_DIR env var set in Docker to /app/logs (mounted volume)
-# Falls back to current directory for local dev
-log_dir = Path(os.getenv("LOG_DIR", "."))
-log_dir.mkdir(parents=True, exist_ok=True)
+# LOG_DIR env var is set in Docker to /app/logs (mounted volume).
+# Falls back to ./logs for local dev.  If the configured path is
+# not writable (e.g. Docker path /app/logs on a local machine),
+# we silently fall back to ./logs instead of crashing.
+_log_dir_env = os.getenv("LOG_DIR", "")
+if _log_dir_env:
+    log_dir = Path(_log_dir_env)
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, FileNotFoundError):
+        # Docker-only path like /app/logs — not writable locally
+        log_dir = Path("logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+else:
+    log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,

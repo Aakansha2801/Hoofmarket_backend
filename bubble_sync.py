@@ -287,11 +287,15 @@ def bulk_update(updates):
 # Top-level sync entry point
 # ──────────────────────────────────────────────────────────────
 
-async def sync_to_bubble():
-    """Full sync: scrape all sites → insert new + update changed listings.
+async def sync_to_bubble(listings: list | None = None):
+    """Full sync: insert new + update changed listings in Bubble.
+
+    If `listings` is provided (from orchestrator), those are used directly
+    — no re-scraping. If None, this function scrapes all sites itself
+    (standalone / CLI usage).
 
     Workflow:
-      1. Run all registered scrapers to produce enriched listing dicts.
+      1. Obtain scraped listing dicts (passed in or self-scraped).
       2. Fetch every existing listing from Bubble (full record for change
          detection).
       3. For each scraped listing:
@@ -302,16 +306,22 @@ async def sync_to_bubble():
       4. Run bulk_insert for new rows.
       5. Run bulk_update (per-row PATCH) for changed rows.
     """
-    # ── Step 1: Run all scrapers ─────────────────────────────────
-    print("Scraping all sites for fresh listing data...")
-    scraped_listings = []
+    # ── Step 1: Get listing data ──────────────────────────────────
+    if listings is not None:
+        # Orchestrator already scraped — use the data directly
+        scraped_listings = listings
+        print(f"Using {len(scraped_listings)} pre-scraped listings (no re-scrape).")
+    else:
+        # Standalone call (e.g. `python bubble_sync.py`) — scrape ourselves
+        print("Scraping all sites for fresh listing data...")
+        scraped_listings = []
 
-    async with make_httpx_client() as client:
-        for scraper in SCRAPERS:
-            listings = await scrape_all_listings(scraper, client)
-            scraped_listings.extend(listings)
+        async with make_httpx_client() as client:
+            for scraper in SCRAPERS:
+                site_listings = await scrape_all_listings(scraper, client)
+                scraped_listings.extend(site_listings)
 
-    print(f"Scraped {len(scraped_listings)} listings across all sites.")
+        print(f"Scraped {len(scraped_listings)} listings across all sites.")
 
     # ── Step 2: Fetch existing Bubble state ───────────────────────
     print("Fetching existing listings from Bubble...")

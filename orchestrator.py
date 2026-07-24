@@ -3,7 +3,6 @@
 # them directly to Bubble.io.  No intermediate database layer.
 # To add a new site: instantiate its scraper class and add to SCRAPERS list.
 
-import asyncio
 import logging
 
 from scrapers.browser import make_httpx_client
@@ -25,51 +24,68 @@ SCRAPERS = [
 
 
 async def run_all_scrapers() -> int:
-    """Run every registered scraper. Returns total listings scraped."""
+    """Run every registered scraper, enrich listings, and sync to Bubble.
+
+    Returns total listings scraped. The enriched listing dicts are
+    passed directly to bubble_sync so there is NO double-scraping.
+    """
+    all_listings = []
     total_scraped = 0
 
     async with make_httpx_client() as client:
         for scraper in SCRAPERS:
             site = scraper.source_site
             logger.info(f"━━━ Scraper: {site} ━━━")
-            scraped = await _run_one(scraper, client)
-            logger.info(f"[{site}] scraped={scraped}")
-            total_scraped += scraped
+            listings, count = await _run_one(scraper, client)
+            all_listings.extend(listings)
+            logger.info(f"[{site}] scraped={count}")
+            total_scraped += count
 
     logger.info(f"✅ All scrapers done — total scraped={total_scraped}")
 
     # ── Sync scraped listings to Bubble.io ───────────────────────
-    # Runs after every scrape cycle. Wrapped in try/except so a Bubble
+    # Passes the already-scraped listing dicts directly so bubble_sync
+    # does NOT need to re-scrape. Wrapped in try/except so a Bubble
     # outage never fails the scrape run.
-    _sync_to_bubble_safe()
+    await _sync_to_bubble_safe(all_listings)
 
     return total_scraped
 
 
-def _sync_to_bubble_safe() -> None:
+async def _sync_to_bubble_safe(listings: list) -> None:
     """Push freshly scraped listings to Bubble.io.
+
+    Receives the already-scraped listing dicts from run_all_scrapers()
+    so that bubble_sync does NOT need to re-scrape all sites.
 
     Imports are deferred so the orchestrator module loads cleanly even
     if `bubble_sync` is misconfigured (missing token, network down, etc.).
     Failures are logged but never raised.
+
+    Uses await because this is called from within an already-running
+    async context (run_all_scrapers), so asyncio.run() would fail.
     """
     try:
         import bubble_sync
         logger.info("━━━ Bubble.io sync ━━━")
-        asyncio.run(bubble_sync.sync_to_bubble())
+        await bubble_sync.sync_to_bubble(listings=listings)
         logger.info("✅ Bubble sync done")
     except Exception as e:
         logger.warning(f"⚠️  Bubble sync failed (scrape still succeeded): {e}")
 
 
-async def _run_one(scraper, client) -> int:
+async def _run_one(scraper, client) -> tuple[list, int]:
     """Run one site scraper end-to-end.
 
     Workflow:
       1. Collect URLs from browse pages.
       2. Scrape detail for each card.
       3. Enrich with extract_fields() + apply_tier().
-      4. Log progress and return count of successful scrapes.
+      4. Derive is_active from auction_status.
+      5. Collect enriched dicts and return them alongside the count.
+
+    Returns:
+        (listings, count) — enriched listing dicts + number of successful scrapes.
     """
     browse_cards = await scraper.collect_listing_urls(client)
     logger.info(
@@ -78,8 +94,9 @@ async def _run_one(scraper, client) -> int:
 
     if not browse_cards:
         logger.info(f"  [{scraper.source_site}] Nothing to scrape — skipping")
-        return 0
+        return [], 0
 
+    listings = []
     ok, err = 0, 0
 
     for i, card in enumerate(browse_cards, 1):
@@ -90,7 +107,10 @@ async def _run_one(scraper, client) -> int:
 
         # Enrich: extract species/sex/age_class/bred_status, then apply tier
         enriched = apply_tier(extract_fields(raw))
+        # Derive is_active for Bubble sync (must match bubble_sync logic)
+        enriched["is_active"] = enriched.get("auction_status") == "active"
 
+        listings.append(enriched)
         ok += 1
 
         if i % 20 == 0:
@@ -102,4 +122,4 @@ async def _run_one(scraper, client) -> int:
 
     if err:
         logger.warning(f"  [{scraper.source_site}] {err} listings failed")
-    return ok
+    return listings, ok

@@ -1,15 +1,21 @@
 # ============================================================
 # HoofMarketIQ — docker-compose.yml
 #
+# Architecture: scrapers → Bubble.io (no intermediate DB)
+#
 # Usage:
 #   docker compose up -d              → start scheduler (production)
 #   docker compose run --rm scraper python main.py --once  → single run
 #   docker compose logs -f            → follow logs
+#   docker compose build              → rebuild image after code changes
 # ============================================================
 
 services:
   scraper:
-    image: aakansha28/hoofmarket-scraper:v2
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: aakansha28/hoofmarket-scraper:v3
     container_name: hoofmarket_scraper
     restart: unless-stopped
 
