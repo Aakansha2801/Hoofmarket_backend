@@ -4,10 +4,10 @@ Starts scraper immediately on server boot, then repeats on the configured
 production interval (default: every 6 h, override via SCRAPE_INTERVAL_HOURS).
 
 Usage:
-    uvicorn app:app --host 0.0.0.0 --port 8000
+    uvicorn app:app --host 0.0.0.0 --port 8010
 
 Docs:
-    http://localhost:8000/docs
+    http://localhost:8010/docs
 """
 
 import asyncio

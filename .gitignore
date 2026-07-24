@@ -1,28 +1,26 @@
-# Environment variables
+# ── Environment variables ────────────────────────────────────
 .env
+.env.*
 
-# Python virtual environment
+# ── Python virtual environment ──────────────────────────────
 venv/
 .venv/
 
-# Python cache
+# ── Python cache ────────────────────────────────────────────
 __pycache__/
 *.pyc
-
-# Logs
-*.log
-
-# VS Code
-.vscode/
-
-# OS files
-.DS_Store
-
-venv/
-__pycache__/
-*.pyc
-.env
+*.pyo
 .pytest_cache/
+.mypy_cache/
 .coverage
 dist/
 build/
+
+# ── Logs ────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── IDE / OS ────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
