@@ -3,11 +3,12 @@
 #
 # Architecture: scrapers → Bubble.io (no intermediate DB)
 #
-# Usage:
-#   docker compose up -d              → start scheduler (production)
-#   docker compose run --rm scraper python main.py --once  → single run
-#   docker compose logs -f            → follow logs
-#   docker compose build              → rebuild image after code changes
+# Usage (docker-compose v1 or docker compose v2):
+#   docker-compose up -d              → start scheduler (production)
+#   docker-compose run --rm scraper python main.py --once  → single run
+#   docker-compose logs -f            → follow logs
+#   docker build -t aakansha28/hoofmarket-scraper:v3 .  → rebuild
+#   docker push aakansha28/hoofmarket-scraper:v3         → push to Hub
 # ============================================================
 
 services:
